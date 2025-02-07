@@ -1,0 +1,4 @@
+{
+    "database_url": "postgres://user:password@localhost:5432/parser",
+    "worker_pool_size": 0
+}
