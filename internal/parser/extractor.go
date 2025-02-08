@@ -1,19 +1,39 @@
 package parser
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
-// Функция для извлечения данных из HTML-страницы
-func ExtractData(doc *goquery.Document) []string {
-	var results []string
+// Структура данных продукта
+type ProductData struct {
+	Name              string
+	UnitOfMeasurement string
+	Price             float64
+}
 
-	// Поиск заголовков товаров (заменить селектор на нужный)
-	doc.Find(".product-title").Each(func(i int, s *goquery.Selection) {
-		title := strings.TrimSpace(s.Text()) // Убираем лишние пробелы
-		results = append(results, title)
+// Функция для извлечения данных из HTML-страницы
+func ExtractData(doc *goquery.Document) []ProductData {
+	var results []ProductData
+
+	doc.Find(".product-item").Each(func(i int, s *goquery.Selection) {
+		name := strings.TrimSpace(s.Find(".product-title").Text())
+		unit := strings.TrimSpace(s.Find(".product-unit").Text()) // Парсим единицы измерения
+		priceText := strings.TrimSpace(s.Find(".product-price").Text())
+
+		// Конвертация цены в число
+		price, err := strconv.ParseFloat(strings.Replace(priceText, "₽", "", -1), 64)
+		if err != nil {
+			price = 0.0
+		}
+
+		results = append(results, ProductData{
+			Name:              name,
+			UnitOfMeasurement: unit,
+			Price:             price,
+		})
 	})
 
 	return results
