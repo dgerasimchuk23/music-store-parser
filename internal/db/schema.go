@@ -8,6 +8,9 @@ import (
 
 // InitializeSchema создаёт таблицы, если их нет
 func InitializeSchema(db *sql.DB) error {
+	log.Println("Выполняется создание схемы...")
+
+	// SQL-схема для создания таблиц
 	schema := `
 	CREATE TABLE IF NOT EXISTS products (
 		id SERIAL PRIMARY KEY,
@@ -37,11 +40,15 @@ func InitializeSchema(db *sql.DB) error {
 	);
 	`
 
+	// Логируем SQL для отладки
+	log.Println("SQL для выполнения:\n", schema)
+
+	// Выполняем SQL-схему
 	_, err := db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("Ошибка создания схемы базы данных: %v", err)
 	}
 
-	log.Println("Схема базы данных успешно инициализирована!")
+	log.Println("Схема успешно создана.")
 	return nil
 }
