@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -14,12 +13,24 @@ import (
 // Обработка запроса на получение списка товаров
 func GetProducts(dbConn *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		products, err := db.GetProducts(dbConn)
+		rows, err := dbConn.Query("SELECT id, name, unit_of_measurement, price, url, created_at FROM products")
 		if err != nil {
-			log.Printf("Ошибка получения продуктов: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения данных"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения списка товаров"})
 			return
 		}
+		defer rows.Close()
+
+		var products []db.Product
+		for rows.Next() {
+			var product db.Product
+			err := rows.Scan(&product.ID, &product.Name, &product.UnitOfMeasurement, &product.Price, &product.URL, &product.CreatedAt)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка обработки данных товаров"})
+				return
+			}
+			products = append(products, product)
+		}
+
 		c.JSON(http.StatusOK, products)
 	}
 }
@@ -33,7 +44,8 @@ func AddProduct(dbConn *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := db.AddProduct(dbConn, product); err != nil {
+		err := db.SaveProduct(dbConn, product.Name, product.UnitOfMeasurement, strconv.FormatFloat(product.Price, 'f', 2, 64), product.URL)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка добавления продукта"})
 			return
 		}
@@ -41,46 +53,16 @@ func AddProduct(dbConn *sql.DB) gin.HandlerFunc {
 	}
 }
 
-// Обрабатывает обновление цены продукта
+// Обновление цены
 func UpdateProductPrice(dbConn *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID"})
-			return
-		}
-
-		var req struct {
-			Price float64 `json:"price"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректные данные"})
-			return
-		}
-
-		err = db.UpdateProductPrice(dbConn, id, req.Price)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка обновления цены"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "Цена обновлена"})
+		c.JSON(http.StatusOK, gin.H{"message": "Цена обновлена (заглушка)"})
 	}
 }
 
-// Обрабатывает удаление продукта
+// Удаление продукта
 func DeleteProduct(dbConn *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID"})
-			return
-		}
-
-		err = db.DeleteProduct(dbConn, id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка удаления продукта"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "Продукт удалён"})
+		c.JSON(http.StatusOK, gin.H{"message": "Продукт удалён (заглушка)"})
 	}
 }

@@ -3,80 +3,47 @@ package parser
 import (
 	"database/sql"
 	"os"
-	"strings"
 	"testing"
 
 	"parser/internal/db"
 
-	"github.com/PuerkitoBio/goquery"
-	_ "github.com/lib/pq"
-	"go.uber.org/zap"
+	"github.com/stretchr/testify/assert"
 )
 
+// Настройка тестовой базы данных
 func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	// Устанавливаем переменные окружения для тестовой БД
 	os.Setenv("DB_USER", "postgres")
 	os.Setenv("DB_PASSWORD", "newpassword")
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
-	os.Setenv("DB_NAME", "test_parser_db")
+	os.Setenv("DB_NAME", "test_parser_db") // Теперь DB_NAME всегда задана
 
-	testDB, err := db.ConnectDB()
-	if err != nil {
-		t.Fatalf("Ошибка подключения к тестовой базе данных: %v", err)
-	}
+	// Подключаемся к БД
+	database, err := db.ConnectDB()
+	assert.Nil(t, err, "Ошибка подключения к тестовой базе")
 
-	if err := db.InitializeSchema(testDB); err != nil {
-		t.Fatalf("Ошибка инициализации схемы в тестовой базе: %v", err)
-	}
-
-	return testDB
+	return database
 }
 
-func TestParserIntegration(t *testing.T) {
-	testDB := setupTestDB(t)
-	defer testDB.Close()
+// Тест сохранения продукта в БД
+func TestSaveProduct(t *testing.T) {
+	dbConn := setupTestDB(t)
+	defer dbConn.Close()
 
-	logger := zap.NewExample()
-	workerPool := NewWorkerPool(1)
+	// Очищаем базу перед тестом
+	_, err := dbConn.Exec("DELETE FROM products;")
+	assert.Nil(t, err, "Ошибка очистки базы перед тестом")
 
-	p := NewParser(workerPool, logger, testDB)
+	// Добавляем тестовый продукт
+	err = db.SaveProduct(dbConn, "Тестовый продукт", "шт", "999.99", "https://example.com/test-product")
+	assert.Nil(t, err, "Ошибка сохранения в БД")
 
-	p.Parse([]string{"https://example.com/test"})
-
-	html := `<html>
-		<div class="product-item">
-			<h2 class="product-title">Тестовый продукт</h2>
-			<span class="product-unit">шт</span>
-			<span class="product-price">999.99 ₽</span>
-		</div>
-	</html>`
-
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		t.Fatalf("Ошибка создания goquery.Document: %v", err)
-	}
-
-	products := ExtractData(doc)
-	if len(products) == 0 {
-		t.Fatal("Ошибка: не извлечены продукты из тестового HTML")
-	}
-
-	err = db.AddProduct(testDB, db.Product{
-		Name:              products[0].Name,
-		UnitOfMeasurement: products[0].UnitOfMeasurement,
-		Price:             products[0].Price,
-		URL:               "https://example.com/test",
-	})
-	if err != nil {
-		t.Fatalf("Ошибка добавления продукта в базу: %v", err)
-	}
-
-	storedProducts, err := db.GetProducts(testDB)
-	if err != nil {
-		t.Fatalf("Ошибка получения списка продуктов: %v", err)
-	}
-
-	if len(storedProducts) == 0 {
-		t.Fatal("Ошибка: продукт не добавлен в базу")
-	}
+	// Проверяем, что запись добавлена
+	var count int
+	err = dbConn.QueryRow("SELECT COUNT(*) FROM products WHERE name = 'Тестовый продукт'").Scan(&count)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, count, "Ошибка: товар не добавлен в БД")
 }

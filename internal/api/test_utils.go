@@ -6,26 +6,24 @@ import (
 	"testing"
 
 	"parser/internal/db"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// Подключение тестовой db (используется во всех тестах)
+// Настройка тестовой базы данных
 func setupTestDB(t *testing.T) *sql.DB {
-	t.Helper() // Вспомогательная функция для тестов
+	t.Helper()
 
+	// Устанавливаем переменные окружения для тестовой БД
 	os.Setenv("DB_USER", "postgres")
 	os.Setenv("DB_PASSWORD", "newpassword")
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
-	os.Setenv("DB_NAME", "test_parser_db")
+	os.Setenv("DB_NAME", "test_parser_db") // Теперь DB_NAME всегда задана
 
-	testDB, err := db.ConnectDB()
-	if err != nil {
-		t.Fatalf("Ошибка подключения к тестовой базе: %v", err)
-	}
+	// Подключаемся к БД
+	database, err := db.ConnectDB()
+	assert.Nil(t, err, "Ошибка подключения к тестовой базе")
 
-	if err := db.InitializeSchema(testDB); err != nil {
-		t.Fatalf("Ошибка инициализации схемы: %v", err)
-	}
-
-	return testDB
+	return database
 }

@@ -9,7 +9,7 @@ type WorkerPool struct {
 }
 
 func NewWorkerPool(size int) *WorkerPool {
-	return &WorkerPool{}
+	return &WorkerPool{wg: sync.WaitGroup{}}
 }
 
 // Добавление задачи в пул

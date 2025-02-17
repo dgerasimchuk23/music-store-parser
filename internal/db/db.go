@@ -9,6 +9,9 @@ import (
 	_ "github.com/lib/pq" // PostgreSQL драйвер
 )
 
+// Глобальная переменная для хранения подключения к БД
+var DB *sql.DB
+
 // ConnectDB - подключение к базе данных
 func ConnectDB() (*sql.DB, error) {
 	dbUser := os.Getenv("DB_USER")
@@ -17,61 +20,36 @@ func ConnectDB() (*sql.DB, error) {
 	dbPort := os.Getenv("DB_PORT")
 	dbName := os.Getenv("DB_NAME")
 
-	// Подключаемся к postgres (без указания конкретной базы)
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/postgres?sslmode=disable",
-		dbUser, dbPassword, dbHost, dbPort)
+	// Проверка, что имя базы данных не пустое
+	if dbName == "" {
+		log.Fatal("Ошибка: переменная окружения DB_NAME не задана!")
+	}
+
+	// Подключаемся к базе данных
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		log.Fatalf("Ошибка подключения к серверу PostgreSQL: %v", err)
-	}
-
-	// Проверяем, существует ли база данных
-	exists, err := checkDatabaseExists(db, dbName)
-	if err != nil {
+		log.Fatalf("Ошибка подключения к базе `%s`: %v", dbName, err)
 		return nil, err
 	}
 
-	// Создаём базу данных, если её нет
-	if !exists {
-		err = createDatabase(db, dbName)
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("База данных %s успешно создана", dbName)
+	// Проверяем соединение
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Ошибка при проверке соединения с базой `%s`: %v", dbName, err)
+		return nil, err
 	}
 
-	// Подключаемся к целевой базе данных
-	dsn = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
+	DB = db
+	log.Printf("Подключение к базе `%s` установлено", dbName)
 
-	db.Close() // Закрываем текущее подключение к postgres
-	db, err = sql.Open("postgres", dsn)
+	// Создаём таблицы, если их нет
+	err = InitializeSchema(db)
 	if err != nil {
-		log.Fatalf("Ошибка подключения к базе %s: %v", dbName, err)
+		log.Fatalf("Ошибка при создании таблиц в `%s`: %v", dbName, err)
+		return nil, err
 	}
 
-	log.Printf("Подключение к базе данных %s установлено", dbName)
 	return db, nil
-}
-
-// Проверяет, существует ли база данных
-func checkDatabaseExists(db *sql.DB, dbName string) (bool, error) {
-	query := `SELECT 1 FROM pg_database WHERE datname = $1`
-	var exists int
-	err := db.QueryRow(query, dbName).Scan(&exists)
-	if err != nil && err != sql.ErrNoRows {
-		return false, fmt.Errorf("Ошибка проверки базы данных: %v", err)
-	}
-	return exists == 1, nil
-}
-
-// Создаёт базу данных
-func createDatabase(db *sql.DB, dbName string) error {
-	query := fmt.Sprintf("CREATE DATABASE %s", dbName)
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("Ошибка создания базы данных %s: %v", dbName, err)
-	}
-	return nil
 }

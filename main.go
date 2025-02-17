@@ -1,52 +1,63 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"parser/internal/db"
 	"parser/internal/parser"
+	"sync"
 
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Загрузка переменных окружения
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Ошибка загрузки .env файла:", err)
+	// Загружаем переменные из .env
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Ошибка загрузки .env файла")
 	}
 
-	// Подключение к базе данных
-	dbConn, err := db.ConnectDB() // Используем функцию ConnectDB
+	log.Println("Запуск парсера...")
+
+	// Подключаемся к базе данных
+	dbConn, err := db.ConnectDB()
 	if err != nil {
-		log.Fatal("Ошибка подключения к базе данных:", err)
+		log.Fatalf("Ошибка подключения к БД: %v", err)
 	}
 	defer dbConn.Close()
 
-	// Проверка текущей базы данных
-	log.Println("Текущая база данных:")
-	row := dbConn.QueryRow("SELECT current_database();")
-	var currentDB string
-	if err := row.Scan(&currentDB); err != nil {
-		log.Fatalf("Ошибка получения текущей базы: %v", err)
+	// Очищаем таблицу перед парсингом
+	_, err = dbConn.Exec("DELETE FROM products;")
+	if err != nil {
+		log.Fatalf("Ошибка очистки таблицы: %v", err)
 	}
-	log.Println("Подключен к базе:", currentDB)
+	log.Println("Таблица `products` очищена перед парсингом")
 
-	// Инициализация схемы базы данных
-	log.Println("Запуск инициализации схемы...")
-	if err := db.InitializeSchema(dbConn); err != nil {
-		log.Fatalf("Ошибка инициализации схемы базы данных: %v", err)
+	// Динамически получаем URL категории
+	categoryURL, err := parser.FindCategoryURL("https://doctorhead.ru/")
+	if err != nil {
+		log.Fatalf("Ошибка поиска URL категории: %v", err)
 	}
-	log.Println("Схема успешно создана!")
 
-	// URL страницы товара для парсинга
-	url := "https://doctorhead.ru/product/amphion_one25a/"
+	// Извлекаем ссылки на товары
+	productLinks := parser.ParseCategory(categoryURL)
 
-	// Создаем экземпляр парсера
-	p := parser.Parser{}
+	// Запускаем многопоточный парсинг товаров
+	var wg sync.WaitGroup
+	for _, link := range productLinks {
+		wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
+			product := parser.ParseProduct(url)
+			if product != nil {
+				err := db.SaveProduct(dbConn, product.Name, "шт", fmt.Sprintf("%.2f", product.Price), product.URL)
+				if err != nil {
+					log.Printf("Ошибка сохранения продукта в БД: %v", err)
+				}
+			}
+		}(link)
+	}
 
-	// Запускаем парсинг страницы
-	p.ParsePage(url)
-
-	// Примерный вывод:
-	// Название товара: Amphon One25A Left
-	// Цена товара: 630 000 ₽
+	wg.Wait()
+	log.Println("Парсинг завершен!")
 }
